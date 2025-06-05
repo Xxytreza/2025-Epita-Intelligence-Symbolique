@@ -1,4 +1,6 @@
 import pytest
+import asyncio
+from unittest.mock import Mock, AsyncMock, patch
 # import jpype # Commenté, sera importé localement
 
 
@@ -9,14 +11,14 @@ def test_qbf_parser_simple_formula(tweety_qbf_classes):
     """
     Teste le parsing d'une formule QBF simple : exists x forall y (x or not y)
     """
-    QbfParser = qbf_classes["QbfParser"]
+    QbfParser = tweety_qbf_classes["QbfParser"]
     # Les classes pour Or, Not, Variable seraient nécessaires pour une vérification
     # plus approfondie de la structure de la formule, mais pour l'instant,
     # on se contente de vérifier que le parsing ne lève pas d'erreur et
     # que la formule toString() correspond.
-    # Variable = qbf_classes["Variable"]
-    # Or = qbf_classes.get("Or") # Peut être None si non défini dans la fixture
-    # Not = qbf_classes.get("Not")
+    # Variable = tweety_qbf_classes["Variable"]
+    # Or = tweety_qbf_classes.get("Or") # Peut être None si non défini dans la fixture
+    # Not = tweety_qbf_classes.get("Not")
 
     parser = QbfParser()
     qbf_string = "exists x forall y (x or not y)"
@@ -69,9 +71,9 @@ def test_qbf_programmatic_creation_exists(tweety_qbf_classes):
     Teste la création programmatique d'une QBF simple : exists x (x)
     (Nécessite que la classe Variable soit bien importée et utilisable)
     """
-    QuantifiedBooleanFormula = qbf_classes["QuantifiedBooleanFormula"]
-    Quantifier = qbf_classes["Quantifier"]
-    Variable = qbf_classes["Variable"]
+    QuantifiedBooleanFormula = tweety_qbf_classes["QuantifiedBooleanFormula"]
+    Quantifier = tweety_qbf_classes["Quantifier"]
+    Variable = tweety_qbf_classes["Variable"]
 
     try:
         import jpype # Import local
@@ -108,9 +110,9 @@ def test_qbf_programmatic_creation_forall_nested(tweety_qbf_classes):
     Teste la création programmatique d'une QBF imbriquée : forall y exists x (y)
     (Nécessite Variable, Quantifier, QuantifiedBooleanFormula)
     """
-    QuantifiedBooleanFormula = qbf_classes["QuantifiedBooleanFormula"]
-    Quantifier = qbf_classes["Quantifier"]
-    Variable = qbf_classes["Variable"]
+    QuantifiedBooleanFormula = tweety_qbf_classes["QuantifiedBooleanFormula"]
+    Quantifier = tweety_qbf_classes["Quantifier"]
+    Variable = tweety_qbf_classes["Variable"]
     # Supposons que les opérateurs logiques comme Or, And, Not sont nécessaires
     # et doivent être importés de Tweety, par exemple de org.tweetyproject.logics.pl.syntax
     # Pour cet exemple, nous allons utiliser une formule interne simple (juste une variable).
@@ -161,9 +163,9 @@ def test_qbf_programmatic_creation_example_from_subject_fiche(tweety_qbf_classes
     Teste la création programmatique de la QBF ∃x ∀y (x ∧ ¬y) de la fiche sujet.
     """
     # Classes QBF (devraient être dans qbf_classes)
-    QuantifiedBooleanFormula = qbf_classes["QuantifiedBooleanFormula"]
-    Quantifier = qbf_classes["Quantifier"]
-    Variable = qbf_classes["Variable"] # Utilisé pour JArray(Variable) pour les variables quantifiées
+    QuantifiedBooleanFormula = tweety_qbf_classes["QuantifiedBooleanFormula"]
+    Quantifier = tweety_qbf_classes["Quantifier"]
+    Variable = tweety_qbf_classes["Variable"] # Utilisé pour JArray(Variable) pour les variables quantifiées
 
     # Classes de la logique propositionnelle pour la matrice de la formule
     # Importées directement car non garanties d'être dans qbf_classes et pour ne pas modifier conftest.py
@@ -224,6 +226,215 @@ def test_qbf_programmatic_creation_example_from_subject_fiche(tweety_qbf_classes
         pytest.fail(f"Erreur Java lors de la création programmatique de la QBF ∃x ∀y (x ∧ ¬y) : {e.stacktrace()}")
     except Exception as e:
         pytest.fail(f"Erreur Python inattendue lors de la création de QBF : {str(e)}")
+
+# --- NOUVEAUX TESTS POUR LES COMPOSANTS QBF ---
+
+def test_qbf_belief_set_creation():
+    """Teste la création d'un QBFBeliefSet"""
+    from argumentation_analysis.agents.core.logic import QBFBeliefSet
+    
+    content = """exists x (x);
+forall y (y => y);
+exists a forall b (a || !b);"""
+    
+    belief_set = QBFBeliefSet(content)
+    
+    assert belief_set.logic_type == "qbf"
+    assert belief_set.content == content
+    
+    # Test de sérialisation
+    dict_repr = belief_set.to_dict()
+    assert dict_repr["logic_type"] == "qbf"
+    assert dict_repr["content"] == content
+
+def test_qbf_belief_set_from_dict():
+    """Teste la création d'un QBFBeliefSet à partir d'un dictionnaire"""
+    from argumentation_analysis.agents.core.logic.belief_set import BeliefSet
+    
+    data = {
+        "logic_type": "qbf",
+        "content": "exists x forall y (x && y);"
+    }
+    
+    belief_set = BeliefSet.from_dict(data)
+    
+    assert belief_set is not None
+    assert belief_set.logic_type == "qbf"
+    assert belief_set.content == "exists x forall y (x && y);"
+
+@pytest.mark.asyncio
+async def test_qbf_logic_agent_creation():
+    """Teste la création d'un QBFLogicAgent"""
+    from argumentation_analysis.agents.core.logic import LogicAgentFactory
+    from semantic_kernel import Kernel
+    
+    # Mock du kernel
+    mock_kernel = Mock(spec=Kernel)
+    
+    # Créer un agent QBF
+    agent = LogicAgentFactory.create_agent("qbf", mock_kernel)
+    
+    assert agent is not None
+    assert agent.name == "QBFLogicAgent"
+    assert agent.logic_type == "QBF"
+
+def test_qbf_logic_factory_support():
+    """Teste que la factory supporte QBF"""
+    from argumentation_analysis.agents.core.logic import LogicAgentFactory
+    
+    # Vérifier que QBF est supporté
+    assert LogicAgentFactory.is_logic_type_supported("qbf")
+    assert LogicAgentFactory.is_logic_type_supported("quantified_boolean")
+    
+    # Vérifier que QBF est dans la liste des types supportés
+    supported_types = LogicAgentFactory.get_supported_logic_types()
+    assert "qbf" in supported_types
+    
+    # Vérifier les capacités
+    capabilities = LogicAgentFactory.get_agent_capabilities_summary()
+    assert "qbf" in capabilities
+    assert capabilities["qbf"]["name"] == "QBFLogicAgent"
+
+@pytest.mark.asyncio
+async def test_qbf_agent_text_to_belief_set():
+    """Teste la conversion de texte en ensemble de croyances QBF"""
+    from argumentation_analysis.agents.core.logic import QBFLogicAgent
+    from semantic_kernel import Kernel
+    
+    # Mock du kernel et des fonctions sémantiques
+    mock_kernel = Mock(spec=Kernel)
+    mock_plugins = Mock()
+    mock_function = AsyncMock()
+    mock_function.invoke = AsyncMock(return_value="exists x (x);")
+    mock_plugins.__getitem__ = Mock(return_value={"TextToQBFBeliefSet": mock_function})
+    mock_kernel.plugins = mock_plugins
+    
+    # Mock TweetyBridge
+    with patch('argumentation_analysis.agents.core.logic.qbf_logic_agent.TweetyBridge') as mock_bridge_class:
+        mock_bridge = Mock()
+        mock_bridge.validate_qbf_belief_set.return_value = (True, "Valid")
+        mock_bridge_class.return_value = mock_bridge
+        
+        agent = QBFLogicAgent(mock_kernel)
+        agent._tweety_bridge = mock_bridge
+        
+        text = "There exists a solution x such that x is true"
+        belief_set, message = await agent.text_to_belief_set(text)
+        
+        assert belief_set is not None
+        assert belief_set.logic_type == "qbf"
+        assert "réussie" in message
+
+@pytest.mark.asyncio
+async def test_qbf_agent_generate_queries():
+    """Teste la génération de requêtes QBF"""
+    from argumentation_analysis.agents.core.logic import QBFLogicAgent, QBFBeliefSet
+    from semantic_kernel import Kernel
+    
+    # Mock du kernel
+    mock_kernel = Mock(spec=Kernel)
+    mock_plugins = Mock()
+    mock_function = AsyncMock()
+    mock_function.invoke = AsyncMock(return_value="exists y (x && y)\nforall z (!z)")
+    mock_plugins.__getitem__ = Mock(return_value={"GenerateQBFQueries": mock_function})
+    mock_kernel.plugins = mock_plugins
+    
+    # Mock TweetyBridge
+    with patch('argumentation_analysis.agents.core.logic.qbf_logic_agent.TweetyBridge') as mock_bridge_class:
+        mock_bridge = Mock()
+        mock_bridge.validate_qbf_formula.return_value = (True, "Valid")
+        mock_bridge_class.return_value = mock_bridge
+        
+        agent = QBFLogicAgent(mock_kernel)
+        agent._tweety_bridge = mock_bridge
+        
+        belief_set = QBFBeliefSet("exists x (x);")
+        text = "Test text"
+        
+        queries = await agent.generate_queries(text, belief_set)
+        
+        assert len(queries) == 2
+        assert "exists y (x && y)" in queries
+        assert "forall z (!z)" in queries
+
+def test_qbf_agent_execute_query():
+    """Teste l'exécution de requêtes QBF"""
+    from argumentation_analysis.agents.core.logic import QBFLogicAgent, QBFBeliefSet
+    from semantic_kernel import Kernel
+    
+    # Mock du kernel
+    mock_kernel = Mock(spec=Kernel)
+    
+    # Mock TweetyBridge
+    with patch('argumentation_analysis.agents.core.logic.qbf_logic_agent.TweetyBridge') as mock_bridge_class:
+        mock_bridge = Mock()
+        mock_bridge.execute_qbf_query.return_value = "Tweety Result: QBF Query 'exists x (x)' is ACCEPTED (True)."
+        mock_bridge_class.return_value = mock_bridge
+        
+        agent = QBFLogicAgent(mock_kernel)
+        agent._tweety_bridge = mock_bridge
+        
+        belief_set = QBFBeliefSet("exists x (x);")
+        query = "exists x (x)"
+        
+        result, message = agent.execute_query(belief_set, query)
+        
+        assert result is True
+        assert "ACCEPTED" in message
+
+@pytest.mark.asyncio
+async def test_qbf_agent_interpret_results():
+    """Teste l'interprétation des résultats QBF"""
+    from argumentation_analysis.agents.core.logic import QBFLogicAgent, QBFBeliefSet
+    from semantic_kernel import Kernel
+    
+    # Mock du kernel
+    mock_kernel = Mock(spec=Kernel)
+    mock_plugins = Mock()
+    mock_function = AsyncMock()
+    mock_function.invoke = AsyncMock(return_value="L'analyse QBF montre que la formule est satisfiable...")
+    mock_plugins.__getitem__ = Mock(return_value={"InterpretQBFResult": mock_function})
+    mock_kernel.plugins = mock_plugins
+    
+    agent = QBFLogicAgent(mock_kernel)
+    
+    belief_set = QBFBeliefSet("exists x (x);")
+    text = "Test text"
+    queries = ["exists x (x)"]
+    results = [(True, "ACCEPTED")]
+    
+    interpretation = await agent.interpret_results(text, belief_set, queries, results)
+    
+    assert "satisfiable" in interpretation
+
+def test_tweety_bridge_qbf_methods():
+    """Teste les méthodes QBF de TweetyBridge"""
+    with patch('argumentation_analysis.agents.core.logic.tweety_bridge.TweetyInitializer') as mock_init:
+        with patch('argumentation_analysis.agents.core.logic.tweety_bridge.QBFHandler') as mock_handler_class:
+            from argumentation_analysis.agents.core.logic import TweetyBridge
+            
+            # Mock QBF handler
+            mock_handler = Mock()
+            mock_handler.parse_qbf_formula.return_value = Mock()
+            mock_handler.qbf_query.return_value = True
+            mock_handler_class.return_value = mock_handler
+            
+            # Mock initializer
+            mock_initializer = Mock()
+            mock_initializer.is_jvm_started.return_value = True
+            mock_init.return_value = mock_initializer
+            
+            bridge = TweetyBridge()
+            bridge._qbf_handler = mock_handler
+            
+            # Test validation
+            is_valid, message = bridge.validate_qbf_formula("exists x (x)")
+            assert is_valid
+            
+            # Test query execution
+            result = bridge.execute_qbf_query("exists x (x);", "exists x (x)")
+            assert "ACCEPTED" in result
+
 # Les tests de satisfiabilité avec QBFSolver sont plus complexes car ils
 # peuvent nécessiter la configuration d'un solveur QBF externe ou intégré à Tweety.
 # Ces tests sont donc commentés pour l'instant et pourront être ajoutés
@@ -231,8 +442,8 @@ def test_qbf_programmatic_creation_example_from_subject_fiche(tweety_qbf_classes
 
 # def test_qbf_satisfiability_simple_true(tweety_qbf_classes):
 #     """Teste la satisfiabilité d'une QBF simple vraie : exists x (x)"""
-#     QbfParser = qbf_classes["QbfParser"]
-#     QBFSolver = qbf_classes.get("QBFSolver") # Peut être None
+#     QbfParser = tweety_qbf_classes["QbfParser"]
+#     QBFSolver = tweety_qbf_classes.get("QBFSolver") # Peut être None
 #     if not QBFSolver:
 #         pytest.skip("QBFSolver non disponible dans les fixtures, test de satisfiabilité sauté.")
 #
@@ -264,8 +475,8 @@ def test_qbf_programmatic_creation_example_from_subject_fiche(tweety_qbf_classes
 #
 # def test_qbf_satisfiability_simple_false(tweety_qbf_classes):
 #     """Teste la satisfiabilité d'une QBF simple fausse : forall x (x and not x)"""
-#     QbfParser = qbf_classes["QbfParser"]
-#     QBFSolver = qbf_classes.get("QBFSolver")
+#     QbfParser = tweety_qbf_classes["QbfParser"]
+#     QBFSolver = tweety_qbf_classes.get("QBFSolver")
 #     if not QBFSolver:
 #         pytest.skip("QBFSolver non disponible, test de satisfiabilité sauté.")
 #
@@ -302,10 +513,10 @@ def test_qbf_prenex_normal_form_transformation(tweety_qbf_classes):
     Devrait devenir: forall x exists y exists z (y and z) (ou une variante équivalente)
     Cela suppose l'existence d'une classe de transformation.
     """
-    QuantifiedBooleanFormula = qbf_classes["QuantifiedBooleanFormula"]
-    Quantifier = qbf_classes["Quantifier"]
-    Variable = qbf_classes["Variable"]
-    QbfParser = qbf_classes["QbfParser"]
+    QuantifiedBooleanFormula = tweety_qbf_classes["QuantifiedBooleanFormula"]
+    Quantifier = tweety_qbf_classes["Quantifier"]
+    Variable = tweety_qbf_classes["Variable"]
+    QbfParser = tweety_qbf_classes["QbfParser"]
     # Supposons l'existence d'un converter, ex: PrenexNormalFormConverter
     # Le nom exact et le package doivent être vérifiés dans Tweety.
     import jpype # Import local
@@ -386,7 +597,7 @@ def test_qbf_parser_dimacs_format(tweety_qbf_classes):
     Teste le parsing d'une QBF au format DIMACS (si supporté directement par QbfParser).
     Ce test est marqué comme skip car la fonctionnalité n'est pas évidente.
     """
-    QbfParser = qbf_classes["QbfParser"]
+    QbfParser = tweety_qbf_classes["QbfParser"]
     # Exemple de contenu DIMACS pour une formule simple (ex: exists 1 forall 2 (1 or -2))
     # p cnf 2 1 1 # 2 variables, 1 clause dans la matrice, 1 bloc de quantificateurs existentiels
     # e 1 0
@@ -447,8 +658,8 @@ def test_qbf_model_extraction(tweety_qbf_classes):
     Exemple: exists x, y (x and y) -> modèle x=true, y=true
     Ce test est marqué comme skip car il dépend d'un QBFSolver.
     """
-    QbfParser = qbf_classes["QbfParser"]
-    QBFSolver = qbf_classes.get("QBFSolver") # Peut être dans qbf_classes si ajouté
+    QbfParser = tweety_qbf_classes["QbfParser"]
+    QBFSolver = tweety_qbf_classes.get("QBFSolver") # Peut être dans qbf_classes si ajouté
     
     if not QBFSolver:
         # Tentative d'importation directe si non présent dans la fixture
@@ -540,3 +751,110 @@ def test_qbf_model_extraction(tweety_qbf_classes):
             pytest.fail(f"Erreur Java lors de l'extraction de modèle QBF: {e.stacktrace()}")
     except AttributeError:
         pytest.skip("Méthode d'extraction de modèle non trouvée (AttributeError).")
+
+# --- TESTS D'INTÉGRATION COMPLÈTE ---
+
+@pytest.mark.asyncio
+async def test_qbf_complete_workflow():
+    """Teste un workflow complet QBF: texte -> belief set -> requêtes -> exécution -> interprétation"""
+    from argumentation_analysis.agents.core.logic import QBFLogicAgent
+    from semantic_kernel import Kernel
+    
+    # Mock complet du kernel
+    mock_kernel = Mock(spec=Kernel)
+    mock_plugins = Mock()
+    
+    # Mock des fonctions sémantiques
+    mock_text_to_beliefs = AsyncMock()
+    mock_text_to_beliefs.invoke = AsyncMock(return_value="exists solution (solution);")
+    
+    mock_generate_queries = AsyncMock() 
+    mock_generate_queries.invoke = AsyncMock(return_value="exists x (solution && x)\nforall y (solution => y)")
+    
+    mock_interpret = AsyncMock()
+    mock_interpret.invoke = AsyncMock(return_value="L'analyse QBF révèle que la formule est satisfiable.")
+    
+    # Configuration des plugins
+    mock_plugin = {
+        "TextToQBFBeliefSet": mock_text_to_beliefs,
+        "GenerateQBFQueries": mock_generate_queries,
+        "InterpretQBFResult": mock_interpret
+    }
+    mock_plugins.__getitem__ = Mock(return_value=mock_plugin)
+    mock_kernel.plugins = mock_plugins
+    
+    # Mock TweetyBridge
+    with patch('argumentation_analysis.agents.core.logic.qbf_logic_agent.TweetyBridge') as mock_bridge_class:
+        mock_bridge = Mock()
+        mock_bridge.validate_qbf_belief_set.return_value = (True, "Valid")
+        mock_bridge.validate_qbf_formula.return_value = (True, "Valid")
+        mock_bridge.execute_qbf_query.return_value = "Tweety Result: QBF Query 'exists x (solution && x)' is ACCEPTED (True)."
+        mock_bridge_class.return_value = mock_bridge
+        
+        # Créer l'agent
+        agent = QBFLogicAgent(mock_kernel)
+        agent._tweety_bridge = mock_bridge
+        
+        # Workflow complet
+        text = "There exists a solution to this problem"
+        
+        # 1. Conversion texte -> belief set
+        belief_set, bs_message = await agent.text_to_belief_set(text)
+        assert belief_set is not None
+        assert "réussie" in bs_message
+        
+        # 2. Génération de requêtes
+        queries = await agent.generate_queries(text, belief_set)
+        assert len(queries) == 2
+        
+        # 3. Exécution des requêtes
+        results = []
+        for query in queries:
+            result = agent.execute_query(belief_set, query)
+            results.append(result)
+        
+        # 4. Interprétation
+        interpretation = await agent.interpret_results(text, belief_set, queries, results)
+        assert "satisfiable" in interpretation
+
+def test_qbf_error_handling():
+    """Teste la gestion d'erreur robuste des composants QBF"""
+    from argumentation_analysis.agents.core.logic import QBFLogicAgent
+    from semantic_kernel import Kernel
+    
+    # Mock du kernel qui échoue
+    mock_kernel = Mock(spec=Kernel)
+    
+    # Mock TweetyBridge qui échoue
+    with patch('argumentation_analysis.agents.core.logic.qbf_logic_agent.TweetyBridge') as mock_bridge_class:
+        mock_bridge = Mock()
+        mock_bridge.validate_qbf_formula.return_value = (False, "Syntaxe invalide")
+        mock_bridge_class.return_value = mock_bridge
+        
+        agent = QBFLogicAgent(mock_kernel)
+        agent._tweety_bridge = mock_bridge
+        
+        # Test de validation échouée
+        is_valid = agent.validate_formula("invalid qbf formula")
+        assert not is_valid
+
+@pytest.mark.integration
+def test_qbf_factory_integration():
+    """Test d'intégration complet avec la factory"""
+    from argumentation_analysis.agents.core.logic import LogicAgentFactory
+    from semantic_kernel import Kernel
+    
+    mock_kernel = Mock(spec=Kernel)
+    
+    # Créer tous les types d'agents incluant QBF
+    agent_types = ["propositional", "first_order", "modal", "qbf"]
+    agents = LogicAgentFactory.create_multiple_agents(agent_types, mock_kernel)
+    
+    # Vérifier que QBF est créé
+    assert "qbf" in agents
+    assert agents["qbf"].logic_type == "QBF"
+    
+    # Vérifier les capacités
+    capabilities = LogicAgentFactory.get_agent_capabilities_summary()
+    assert "qbf" in capabilities
+    assert "booléennes quantifiées" in capabilities["qbf"]["description"]

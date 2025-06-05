@@ -6,8 +6,8 @@ Ce module fournit la classe `TweetyBridge` qui sert d'interface Python
 pour interagir avec les bibliothèques Java de TweetyProject. Elle permet
 de parser des formules et des ensembles de croyances, de valider leur syntaxe,
 et d'exécuter des requêtes pour la logique propositionnelle, la logique du
-premier ordre, et la logique modale. L'interaction avec Java est gérée
-par la bibliothèque JPype.
+premier ordre, la logique modale, et la logique QBF. L'interaction avec Java 
+est gérée par la bibliothèque JPype.
 """
 
 import logging
@@ -22,6 +22,7 @@ from .tweety_initializer import TweetyInitializer
 from .pl_handler import PLHandler
 from .fol_handler import FOLHandler
 from .modal_handler import ModalHandler
+from .qbf_handler import QBFHandler
 
 # Configuration du logger
 logger = logging.getLogger("Orchestration.TweetyBridge")
@@ -33,9 +34,10 @@ class TweetyBridge:
     Cette classe encapsule la communication avec TweetyProject, permettant
     l'analyse syntaxique, la validation et le raisonnement sur des bases de
     croyances en logique propositionnelle (PL), logique du premier ordre (FOL),
-    et logique modale (ML). Elle utilise les handlers dédiés (PLHandler,
-    FOLHandler, ModalHandler) qui s'appuient sur TweetyInitializer pour la
-    gestion de la JVM et des composants Java de TweetyProject.
+    logique modale (ML), et logique des formules booléennes quantifiées (QBF). 
+    Elle utilise les handlers dédiés (PLHandler, FOLHandler, ModalHandler, QBFHandler) 
+    qui s'appuient sur TweetyInitializer pour la gestion de la JVM et des composants 
+    Java de TweetyProject.
 
     Attributes:
         _logger (logging.Logger): Logger pour cette classe.
@@ -44,6 +46,7 @@ class TweetyBridge:
         _pl_handler (PLHandler): Handler pour la logique propositionnelle.
         _fol_handler (FOLHandler): Handler pour la logique du premier ordre.
         _modal_handler (ModalHandler): Handler pour la logique modale.
+        _qbf_handler (QBFHandler): Handler pour la logique QBF.
     """
     
     def __init__(self):
@@ -73,17 +76,29 @@ class TweetyBridge:
         else:
             self._logger.info("TWEETY_BRIDGE: __init__ - JVM déjà prête ou initialisée par TweetyInitializer.")
 
-        # S'assurer que les composants spécifiques sont initialisés (PL, FOL, Modal)
+        # S'assurer que les composants spécifiques sont initialisés (PL, FOL, Modal, QBF)
         # Ces appels sont idempotents dans TweetyInitializer s'ils ont déjà été faits.
         self._initializer.initialize_pl_components()
         self._initializer.initialize_fol_components()
         self._initializer.initialize_modal_components()
+        # Note: QBF components initialization will be handled by QBFHandler internally
 
         # Initialiser les handlers spécifiques
         try:
             self._pl_handler = PLHandler(self._initializer)
             self._fol_handler = FOLHandler(self._initializer)
             self._modal_handler = ModalHandler(self._initializer)
+            
+            # Initialiser le handler QBF (peut être plus tolérant aux échecs)
+            try:
+                self._qbf_handler = QBFHandler(self._initializer)
+                self._logger.info("TWEETY_BRIDGE: __init__ - QBF Handler initialisé avec succès.")
+            except RuntimeError as e:
+                self._logger.error(f"TWEETY_BRIDGE: __init__ - Erreur lors de l'initialisation du QBF handler: {e}", exc_info=True)
+                # Pour QBF, on peut être plus tolérant et continuer sans ce handler si nécessaire
+                self._qbf_handler = None
+                self._logger.warning("TWEETY_BRIDGE: QBF Handler non disponible, les fonctionnalités QBF seront désactivées.")
+            
             self._jvm_ok = True # Indique que les handlers Python sont prêts
             self._logger.info("TWEETY_BRIDGE: __init__ - Handlers PL, FOL, Modal initialisés avec succès.")
         except RuntimeError as e:
@@ -103,7 +118,7 @@ class TweetyBridge:
         """
         # Vérifie que l'initializer est là, que la JVM est prête via l'initializer,
         # et que les handlers Python ont été instanciés (indiqué par self._jvm_ok dans __init__).
-        return (
+        base_ready = (
             self._initializer is not None and
             self._initializer.is_jvm_started() and # Utiliser la méthode correcte de TweetyInitializer
             hasattr(self, '_pl_handler') and self._pl_handler is not None and
@@ -111,6 +126,9 @@ class TweetyBridge:
             hasattr(self, '_modal_handler') and self._modal_handler is not None and
             self._jvm_ok # Ce flag interne à TweetyBridge indique si les handlers Python sont OK
         )
+        
+        # QBF handler is optional, so we don't require it for basic readiness
+        return base_ready
 
     # Les méthodes _initialize_jvm_components, _initialize_pl_components,
     # _initialize_fol_components, et _initialize_modal_components
@@ -447,5 +465,84 @@ class TweetyBridge:
 
     # Les méthodes _parse_modal_formula, _parse_modal_belief_set, _execute_modal_query_internal
     # sont maintenant encapsulées dans ModalHandler et peuvent être supprimées ici.
+
+    # --- Méthodes pour la logique QBF ---
+
+    def validate_qbf_formula(self, formula_string: str) -> Tuple[bool, str]:
+        """
+        Valide la syntaxe d'une formule QBF.
+        Délègue la validation au QBFHandler.
+        """
+        if not self.is_jvm_ready() or not hasattr(self, '_qbf_handler') or self._qbf_handler is None:
+            return False, "TweetyBridge ou QBFHandler non prêt."
+
+        self._logger.debug(f"TweetyBridge.validate_qbf_formula appelée pour: '{formula_string}'")
+        try:
+            self._qbf_handler.parse_qbf_formula(formula_string)
+            self._logger.info(f"Formule QBF '{formula_string}' validée avec succès par QBFHandler.")
+            return True, "Formule QBF valide"
+        except ValueError as e_val:
+            self._logger.warning(f"Erreur de syntaxe QBF pour '{formula_string}' détectée par QBFHandler: {e_val}")
+            return False, f"Erreur de syntaxe QBF: {str(e_val)}"
+        except Exception as e_generic:
+            self._logger.error(f"Erreur inattendue lors de la validation QBF de '{formula_string}': {e_generic}", exc_info=True)
+            return False, f"Erreur QBF inattendue: {str(e_generic)}"
+
+    def validate_qbf_belief_set(self, belief_set_string: str) -> Tuple[bool, str]:
+        """
+        Valide la syntaxe d'un ensemble de croyances QBF.
+        Délègue la validation au QBFHandler.
+        """
+        if not self.is_jvm_ready() or not hasattr(self, '_qbf_handler') or self._qbf_handler is None:
+            return False, "TweetyBridge ou QBFHandler non prêt."
+
+        self._logger.debug(f"TweetyBridge.validate_qbf_belief_set appelée pour BS: '{belief_set_string[:100]}...'")
+        try:
+            self._qbf_handler.parse_qbf_belief_set(belief_set_string)
+            self._logger.info(f"Ensemble de croyances QBF validé avec succès par QBFHandler.")
+            return True, "Ensemble de croyances QBF valide"
+        except ValueError as e_val:
+            self._logger.warning(f"Erreur de syntaxe dans le BS QBF détectée par QBFHandler: {e_val}")
+            return False, f"Erreur de syntaxe QBF: {str(e_val)}"
+        except Exception as e_generic:
+            self._logger.error(f"Erreur inattendue lors de la validation du BS QBF: {e_generic}", exc_info=True)
+            return False, f"Erreur QBF inattendue: {str(e_generic)}"
+
+    @kernel_function(
+        description="Exécute une requête en logique QBF sur un Belief Set fourni.",
+        name="execute_qbf_query"
+    )
+    def execute_qbf_query(self, belief_set_content: str, query_string: str) -> str:
+        """
+        Exécute une requête QBF sur un ensemble de croyances.
+        Délègue l'exécution au QBFHandler.
+        """
+        self._logger.info(f"TweetyBridge.execute_qbf_query: Query='{query_string}' sur BS: ('{belief_set_content[:60]}...')")
+        
+        if not self.is_jvm_ready() or not hasattr(self, '_qbf_handler') or self._qbf_handler is None:
+            self._logger.error("TweetyBridge.execute_qbf_query: TweetyBridge ou QBFHandler non prêt.")
+            return "FUNC_ERROR: TweetyBridge ou QBFHandler non prêt."
+        
+        try:
+            result_bool = self._qbf_handler.qbf_query(belief_set_content, query_string)
+            
+            if result_bool is None:
+                result_str = f"Tweety Result: Unknown for QBF query '{query_string}'."
+                self._logger.warning(f"Requête QBF '{query_string}' -> indéterminé (None) via QBFHandler.")
+            else:
+                result_label = "ACCEPTED (True)" if result_bool else "REJECTED (False)"
+                result_str = f"Tweety Result: QBF Query '{query_string}' is {result_label}."
+                self._logger.info(f"Résultat formaté requête QBF '{query_string}' via QBFHandler: {result_label}")
+            
+            return result_str
+            
+        except ValueError as e_val:
+            error_msg = f"Erreur lors de l'exécution de la requête QBF via QBFHandler: {str(e_val)}"
+            self._logger.error(error_msg, exc_info=True)
+            return f"FUNC_ERROR: {error_msg}"
+        except Exception as e_generic:
+            error_msg = f"Erreur inattendue lors de l'exécution de la requête QBF: {str(e_generic)}"
+            self._logger.error(error_msg, exc_info=True)
+            return f"FUNC_ERROR: {error_msg}"
 
 # Fin des méthodes de la classe TweetyBridge

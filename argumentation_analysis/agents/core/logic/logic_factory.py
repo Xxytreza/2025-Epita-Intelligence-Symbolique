@@ -13,6 +13,7 @@ from .abstract_logic_agent import AbstractLogicAgent
 from .propositional_logic_agent import PropositionalLogicAgent
 from .first_order_logic_agent import FirstOrderLogicAgent
 from .modal_logic_agent import ModalLogicAgent
+from .qbf_logic_agent import QBFLogicAgent
 
 # Configuration du logger
 logger = logging.getLogger("Orchestration.LogicAgentFactory")
@@ -29,7 +30,8 @@ class LogicAgentFactory:
     _agent_classes: Dict[str, Type[AbstractLogicAgent]] = {
         "propositional": PropositionalLogicAgent,
         "first_order": FirstOrderLogicAgent,
-        "modal": ModalLogicAgent
+        "modal": ModalLogicAgent,
+        "qbf": QBFLogicAgent
     }
     
     @classmethod
@@ -41,7 +43,7 @@ class LogicAgentFactory:
         avec le `kernel` fourni, et configure ses composants avec `llm_service` si présent.
 
         :param logic_type: Le type de logique pour lequel créer l'agent
-                           (par exemple, "propositional", "first_order", "modal").
+                           (par exemple, "propositional", "first_order", "modal", "qbf").
                            La casse est ignorée et les espaces sont supprimés.
         :type logic_type: str
         :param kernel: L'instance du `semantic_kernel.Kernel` à passer à l'agent.
@@ -56,17 +58,30 @@ class LogicAgentFactory:
         logger.info(f"Création d'un agent logique de type '{logic_type}'")
         
         # Normaliser le type de logique
-        logic_type = logic_type.lower().strip()
+        normalized_logic_type = logic_type.lower().strip()
+        
+        # Support des aliases pour une meilleure ergonomie
+        type_aliases = {
+            "pl": "propositional",
+            "fol": "first_order",
+            "ml": "modal",
+            "quantified_boolean": "qbf"
+        }
+        
+        # Résoudre les aliases
+        if normalized_logic_type in type_aliases:
+            normalized_logic_type = type_aliases[normalized_logic_type]
         
         # Vérifier si le type de logique est supporté
-        if logic_type not in cls._agent_classes:
+        if normalized_logic_type not in cls._agent_classes:
             logger.error(f"Type de logique non supporté: {logic_type}")
             logger.info(f"Types supportés: {', '.join(cls._agent_classes.keys())}")
+            logger.info(f"Aliases supportés: {', '.join(type_aliases.keys())}")
             return None
         
         try:
             # Créer l'instance de l'agent
-            agent_class = cls._agent_classes[logic_type]
+            agent_class = cls._agent_classes[normalized_logic_type]
             agent = agent_class(kernel)
             
             # Configurer le kernel de l'agent si un service LLM est fourni
@@ -106,3 +121,98 @@ class LogicAgentFactory:
         :rtype: List[str]
         """
         return list(cls._agent_classes.keys())
+    
+    @classmethod
+    def get_supported_logic_types_with_aliases(cls) -> Dict[str, str]:
+        """
+        Retourne un dictionnaire des types de logique supportés avec leurs aliases.
+
+        :return: Un dictionnaire mapping alias -> type de logique réel.
+        :rtype: Dict[str, str]
+        """
+        base_types = list(cls._agent_classes.keys())
+        aliases = {
+            "pl": "propositional",
+            "fol": "first_order", 
+            "ml": "modal",
+            "quantified_boolean": "qbf"
+        }
+        
+        # Créer le mapping complet
+        all_types = {}
+        
+        # Ajouter les types de base
+        for base_type in base_types:
+            all_types[base_type] = base_type
+            
+        # Ajouter les aliases
+        for alias, base_type in aliases.items():
+            if base_type in base_types:
+                all_types[alias] = base_type
+                
+        return all_types
+    
+    @classmethod
+    def is_logic_type_supported(cls, logic_type: str) -> bool:
+        """
+        Vérifie si un type de logique (ou son alias) est supporté.
+
+        :param logic_type: Le type de logique à vérifier.
+        :type logic_type: str
+        :return: True si le type est supporté, False sinon.
+        :rtype: bool
+        """
+        normalized_logic_type = logic_type.lower().strip()
+        
+        # Vérifier les types directs
+        if normalized_logic_type in cls._agent_classes:
+            return True
+            
+        # Vérifier les aliases
+        type_aliases = {
+            "pl": "propositional",
+            "fol": "first_order",
+            "ml": "modal", 
+            "quantified_boolean": "qbf"
+        }
+        
+        if normalized_logic_type in type_aliases:
+            return type_aliases[normalized_logic_type] in cls._agent_classes
+            
+        return False
+    
+    @classmethod
+    def get_agent_capabilities_summary(cls) -> Dict[str, Dict[str, str]]:
+        """
+        Retourne un résumé des capacités de chaque type d'agent supporté.
+
+        :return: Dictionnaire avec les informations sur chaque type d'agent.
+        :rtype: Dict[str, Dict[str, str]]
+        """
+        capabilities = {
+            "propositional": {
+                "name": "PropositionalLogicAgent",
+                "description": "Agent pour la logique propositionnelle avec connecteurs logiques",
+                "syntax": "Propositions atomiques, connecteurs: !, ||, &&, =>, <=>"
+            },
+            "first_order": {
+                "name": "FirstOrderLogicAgent", 
+                "description": "Agent pour la logique du premier ordre avec quantificateurs et prédicats",
+                "syntax": "Prédicats, variables, constantes, quantificateurs: forall, exists"
+            },
+            "modal": {
+                "name": "ModalLogicAgent",
+                "description": "Agent pour la logique modale avec opérateurs de nécessité et possibilité",
+                "syntax": "Opérateurs modaux: []p (nécessité), <>p (possibilité)"
+            },
+            "qbf": {
+                "name": "QBFLogicAgent",
+                "description": "Agent pour la logique des formules booléennes quantifiées",
+                "syntax": "Variables booléennes, quantificateurs: exists, forall sur variables booléennes"
+            }
+        }
+        
+        # Retourner seulement les capacités des agents actuellement enregistrés
+        return {logic_type: capabilities[logic_type] 
+                for logic_type in cls._agent_classes.keys() 
+                if logic_type in capabilities}

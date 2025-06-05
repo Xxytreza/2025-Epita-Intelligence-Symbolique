@@ -79,6 +79,8 @@ class BeliefSet(ABC):
             return FirstOrderBeliefSet(content)
         elif logic_type == "modal":
             return ModalBeliefSet(content)
+        elif logic_type == "qbf":
+            return QBFBeliefSet(content)
         else:
             return None
 
@@ -129,3 +131,19 @@ class ModalBeliefSet(BeliefSet):
         :rtype: str
         """
         return "modal"
+    
+    
+class QBFBeliefSet(BeliefSet):
+    """
+    Classe pour représenter un ensemble de croyances en logique des formules booléennes quantifiées (QBF).
+    """
+    
+    @property
+    def logic_type(self) -> str:
+        """
+        Retourne le type de logique pour cet ensemble de croyances.
+
+        :return: "qbf"
+        :rtype: str
+        """
+        return "qbf"

@@ -18,7 +18,7 @@ class TweetyInitializer:
     """
     Handles the initialization of JVM components for TweetyProject.
     This includes starting the JVM, setting up classpaths, and initializing
-    specific logic components like PL, FOL, and Modal logic.
+    specific logic components like PL, FOL, Modal logic, and QBF.
     """
 
     _jvm_started = False
@@ -29,6 +29,8 @@ class TweetyInitializer:
     _modal_logic = None
     _modal_parser = None
     _modal_reasoner = None
+    _qbf_parser = None
+    _qbf_components = None
     _tweety_bridge = None # Reference to the main bridge
 
     def __init__(self, tweety_bridge_instance):
@@ -97,6 +99,12 @@ class TweetyInitializer:
                             logger.warning(f"Le package 'org/tweetyproject/' ne semble PAS être à la racine de {tweety_jar_file}!")
                         else:
                             logger.info(f"Le package 'org/tweetyproject/' semble être présent dans {tweety_jar_file}.")
+                            
+                        # Check for QBF specific classes
+                        if "org/tweetyproject/logics/qbf/" in result.stdout:
+                            logger.info(f"QBF package 'org/tweetyproject/logics/qbf/' trouvé dans {tweety_jar_file}.")
+                        else:
+                            logger.warning(f"QBF package 'org/tweetyproject/logics/qbf/' NON trouvé dans {tweety_jar_file}.")
                     else:
                         logger.error(f"Erreur lors de l'inspection de {tweety_jar_file} avec jar tf: {result.stderr}")
                 except FileNotFoundError:
@@ -189,6 +197,24 @@ class TweetyInitializer:
             # jpype.imports.org.tweetyproject.logics.ml.parser.MlParser # Old way
             _ = jpype.JClass("org.tweetyproject.logics.ml.parser.MlParser")
             
+            # QBF Logic - Try to import QBF classes
+            try:
+                logger.info("Attempting to import QBF classes...")
+                _ = jpype.JClass("org.tweetyproject.logics.qbf.syntax.QuantifiedBooleanFormula")
+                _ = jpype.JClass("org.tweetyproject.logics.qbf.syntax.Quantifier")
+                _ = jpype.JClass("org.tweetyproject.logics.qbf.parser.QbfParser")
+                _ = jpype.JClass("org.tweetyproject.logics.commons.syntax.Variable")
+                # Additional propositional classes for QBF matrix construction
+                _ = jpype.JClass("org.tweetyproject.logics.propositional.syntax.Proposition")
+                _ = jpype.JClass("org.tweetyproject.logics.propositional.syntax.Conjunction")
+                _ = jpype.JClass("org.tweetyproject.logics.propositional.syntax.Disjunction")
+                _ = jpype.JClass("org.tweetyproject.logics.propositional.syntax.Negation")
+                _ = jpype.JClass("org.tweetyproject.logics.propositional.syntax.Implication")
+                logger.info("Successfully imported QBF Java classes.")
+            except Exception as e_qbf:
+                logger.warning(f"Failed to import QBF classes (QBF functionality will be disabled): {e_qbf}")
+                # QBF is optional, so we don't raise an error here
+            
             # General TweetyProject classes
             _ = jpype.JClass("org.tweetyproject.commons.ParserException")
             _ = jpype.JClass("org.tweetyproject.logics.commons.syntax.Sort")
@@ -251,6 +277,47 @@ class TweetyInitializer:
             logger.error(f"Error initializing Modal Logic components: {e}", exc_info=True)
             raise
 
+    def initialize_qbf_components(self):
+        """Initializes components for QBF Logic."""
+        if not TweetyInitializer._jvm_started:
+            self._start_jvm()
+        try:
+            logger.debug("Initializing QBF components...")
+            
+            # Try to initialize QBF components
+            try:
+                TweetyInitializer._qbf_parser = jpype.JClass("org.tweetyproject.logics.qbf.parser.QbfParser")()
+                
+                # Store QBF component classes for later use
+                qbf_components = {
+                    "QuantifiedBooleanFormula": jpype.JClass("org.tweetyproject.logics.qbf.syntax.QuantifiedBooleanFormula"),
+                    "Quantifier": jpype.JClass("org.tweetyproject.logics.qbf.syntax.Quantifier"),
+                    "Variable": jpype.JClass("org.tweetyproject.logics.commons.syntax.Variable"),
+                    "Proposition": jpype.JClass("org.tweetyproject.logics.propositional.syntax.Proposition"),
+                    "Conjunction": jpype.JClass("org.tweetyproject.logics.propositional.syntax.Conjunction"),
+                    "Disjunction": jpype.JClass("org.tweetyproject.logics.propositional.syntax.Disjunction"),
+                    "Negation": jpype.JClass("org.tweetyproject.logics.propositional.syntax.Negation"),
+                    "Implication": jpype.JClass("org.tweetyproject.logics.propositional.syntax.Implication")
+                }
+                
+                TweetyInitializer._qbf_components = qbf_components
+                logger.info("QBF components initialized successfully.")
+                return TweetyInitializer._qbf_parser, qbf_components
+                
+            except Exception as e_qbf_init:
+                logger.warning(f"Failed to initialize QBF components: {e_qbf_init}")
+                logger.info("QBF functionality will not be available.")
+                TweetyInitializer._qbf_parser = None
+                TweetyInitializer._qbf_components = None
+                return None, None
+                
+        except Exception as e:
+            logger.error(f"Error during QBF components initialization: {e}", exc_info=True)
+            # QBF is optional, so we don't raise an error but return None
+            TweetyInitializer._qbf_parser = None
+            TweetyInitializer._qbf_components = None
+            return None, None
+
     @staticmethod
     def get_pl_parser():
         if TweetyInitializer._pl_parser is None:
@@ -271,6 +338,22 @@ class TweetyInitializer:
     def get_modal_parser():
         return TweetyInitializer._modal_parser
 
+    @staticmethod
+    def get_qbf_parser():
+        """Returns the QBF parser if available."""
+        return TweetyInitializer._qbf_parser
+
+    @staticmethod
+    def get_qbf_components():
+        """Returns the QBF component classes if available."""
+        return TweetyInitializer._qbf_components
+
+    @staticmethod
+    def is_qbf_available():
+        """Checks if QBF components are available and initialized."""
+        return (TweetyInitializer._qbf_parser is not None and 
+                TweetyInitializer._qbf_components is not None)
+
     # Add other static getters if needed for reasoners or specific logic instances
 
     def is_jvm_started(self):
@@ -290,6 +373,8 @@ class TweetyInitializer:
                 TweetyInitializer._modal_logic = None
                 TweetyInitializer._modal_parser = None
                 TweetyInitializer._modal_reasoner = None
+                TweetyInitializer._qbf_parser = None
+                TweetyInitializer._qbf_components = None
                 
                 logger.info("Shutting down JVM...")
                 jpype.shutdownJVM()
