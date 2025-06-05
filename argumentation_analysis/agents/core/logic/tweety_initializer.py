@@ -19,6 +19,8 @@ class TweetyInitializer:
     Handles the initialization of JVM components for TweetyProject.
     This includes starting the JVM, setting up classpaths, and initializing
     specific logic components like PL, FOL, Modal logic, and QBF.
+    
+    QBF is now REQUIRED - system will fail if QBF components are not available.
     """
 
     _jvm_started = False
@@ -100,11 +102,13 @@ class TweetyInitializer:
                         else:
                             logger.info(f"Le package 'org/tweetyproject/' semble être présent dans {tweety_jar_file}.")
                             
-                        # Check for QBF specific classes
+                        # Check for QBF specific classes - NOW CRITICAL
                         if "org/tweetyproject/logics/qbf/" in result.stdout:
-                            logger.info(f"QBF package 'org/tweetyproject/logics/qbf/' trouvé dans {tweety_jar_file}.")
+                            logger.info(f"✅ QBF package 'org/tweetyproject/logics/qbf/' trouvé dans {tweety_jar_file}.")
                         else:
-                            logger.warning(f"QBF package 'org/tweetyproject/logics/qbf/' NON trouvé dans {tweety_jar_file}.")
+                            error_msg = f"❌ CRITICAL: QBF package 'org/tweetyproject/logics/qbf/' NON trouvé dans {tweety_jar_file}. QBF is now REQUIRED."
+                            logger.error(error_msg)
+                            raise RuntimeError(error_msg)
                     else:
                         logger.error(f"Erreur lors de l'inspection de {tweety_jar_file} avec jar tf: {result.stderr}")
                 except FileNotFoundError:
@@ -172,57 +176,84 @@ class TweetyInitializer:
         logger.info("Attempting to import TweetyProject Java classes...")
         try:
             # Propositional Logic
-            # jpype.imports.org.tweetyproject.logics.pl.syntax # Old way
             _ = jpype.JClass("org.tweetyproject.logics.pl.syntax.PlSignature")
             _ = jpype.JClass("org.tweetyproject.logics.pl.syntax.Proposition")
             _ = jpype.JClass("org.tweetyproject.logics.pl.syntax.PlBeliefSet")
-            # jpype.imports.org.tweetyproject.logics.pl.reasoner # Old way
             _ = jpype.JClass("org.tweetyproject.logics.pl.reasoner.SatReasoner")
-            # jpype.imports.org.tweetyproject.logics.pl.sat # Old way
             _ = jpype.JClass("org.tweetyproject.logics.pl.sat.Sat4jSolver")
             
             # First-Order Logic
-            # jpype.imports.org.tweetyproject.logics.fol.syntax # Old way
             _ = jpype.JClass("org.tweetyproject.logics.fol.syntax.FolSignature")
             _ = jpype.JClass("org.tweetyproject.logics.fol.syntax.FolBeliefSet")
-            # jpype.imports.org.tweetyproject.logics.fol.reasoner # Old way
             _ = jpype.JClass("org.tweetyproject.logics.fol.reasoner.SimpleFolReasoner")
             
             # Modal Logic
-            # jpype.imports.org.tweetyproject.logics.ml.syntax # Old way
-            _ = jpype.JClass("org.tweetyproject.logics.ml.syntax.MlFormula") # Attempting to use MlFormula for ModalLogic types
+            _ = jpype.JClass("org.tweetyproject.logics.ml.syntax.MlFormula")
             _ = jpype.JClass("org.tweetyproject.logics.ml.syntax.MlBeliefSet")
-            # jpype.imports.org.tweetyproject.logics.ml.reasoner # Old way
-            _ = jpype.JClass("org.tweetyproject.logics.ml.reasoner.SimpleMlReasoner") # KrHyperModalReasoner non trouvé dans le JAR
-            # jpype.imports.org.tweetyproject.logics.ml.parser.MlParser # Old way
+            _ = jpype.JClass("org.tweetyproject.logics.ml.reasoner.SimpleMlReasoner")
             _ = jpype.JClass("org.tweetyproject.logics.ml.parser.MlParser")
             
-            # QBF Logic - Try to import QBF classes
-            try:
-                logger.info("Attempting to import QBF classes...")
-                _ = jpype.JClass("org.tweetyproject.logics.qbf.syntax.QuantifiedBooleanFormula")
-                _ = jpype.JClass("org.tweetyproject.logics.qbf.syntax.Quantifier")
-                _ = jpype.JClass("org.tweetyproject.logics.qbf.parser.QbfParser")
-                _ = jpype.JClass("org.tweetyproject.logics.commons.syntax.Variable")
-                # Additional propositional classes for QBF matrix construction
-                _ = jpype.JClass("org.tweetyproject.logics.propositional.syntax.Proposition")
-                _ = jpype.JClass("org.tweetyproject.logics.propositional.syntax.Conjunction")
-                _ = jpype.JClass("org.tweetyproject.logics.propositional.syntax.Disjunction")
-                _ = jpype.JClass("org.tweetyproject.logics.propositional.syntax.Negation")
-                _ = jpype.JClass("org.tweetyproject.logics.propositional.syntax.Implication")
-                logger.info("Successfully imported QBF Java classes.")
-            except Exception as e_qbf:
-                logger.warning(f"Failed to import QBF classes (QBF functionality will be disabled): {e_qbf}")
-                # QBF is optional, so we don't raise an error here
+            # QBF Logic - START MINIMAL AND DISCOVER WHAT EXISTS
+            logger.info("Importing QBF classes (REQUIRED) - MINIMAL DISCOVERY MODE...")
+            
+            # Try to find ANY QBF parser that exists
+            qbf_parser_candidates = [
+                "org.tweetyproject.logics.qbf.parser.QCirParser",
+                "org.tweetyproject.logics.qbf.parser.QdimacsParser", 
+                "org.tweetyproject.logics.qbf.parser.QbfParser"
+            ]
+            
+            found_parser = None
+            for parser_class in qbf_parser_candidates:
+                try:
+                    test_parser = jpype.JClass(parser_class)
+                    logger.info(f"✅ FOUND QBF parser: {parser_class}")
+                    found_parser = parser_class
+                    break
+                except Exception as e:
+                    logger.debug(f"❌ QBF parser {parser_class} not found: {e}")
+                    continue
+            
+            if not found_parser:
+                raise RuntimeError(f"CRITICAL: No QBF parser found in candidates: {qbf_parser_candidates}")
+            
+            # Try to find ANY QBF syntax classes that exist
+            qbf_syntax_candidates = [
+                "org.tweetyproject.logics.qbf.syntax.ExistsQuantifiedFormula",
+                "org.tweetyproject.logics.qbf.syntax.ForallQuantifiedFormula",
+                "org.tweetyproject.logics.qbf.syntax.QuantifiedBooleanFormula",
+                "org.tweetyproject.logics.qbf.syntax.QbfFormula"
+            ]
+            
+            found_syntax_classes = []
+            for syntax_class in qbf_syntax_candidates:
+                try:
+                    test_class = jpype.JClass(syntax_class)
+                    logger.info(f"✅ FOUND QBF syntax class: {syntax_class}")
+                    found_syntax_classes.append(syntax_class)
+                except Exception as e:
+                    logger.debug(f"❌ QBF syntax class {syntax_class} not found: {e}")
+                    continue
+            
+            if not found_syntax_classes:
+                raise RuntimeError(f"CRITICAL: No QBF syntax classes found in candidates: {qbf_syntax_candidates}")
+            
+            # Essential PL classes for QBF matrix construction
+            _ = jpype.JClass("org.tweetyproject.logics.pl.syntax.Proposition")
+            _ = jpype.JClass("org.tweetyproject.logics.pl.syntax.Conjunction")
+            _ = jpype.JClass("org.tweetyproject.logics.pl.syntax.Disjunction")
+            _ = jpype.JClass("org.tweetyproject.logics.pl.syntax.Negation")
+            _ = jpype.JClass("org.tweetyproject.logics.pl.syntax.Implication")
+            
+            logger.info(f"✅ Successfully imported QBF classes! Found parser: {found_parser}, Found syntax classes: {found_syntax_classes}")
             
             # General TweetyProject classes
             _ = jpype.JClass("org.tweetyproject.commons.ParserException")
             _ = jpype.JClass("org.tweetyproject.logics.commons.syntax.Sort")
-            logger.info("Successfully imported TweetyProject Java classes.")
+            logger.info("Successfully imported ALL TweetyProject Java classes including QBF.")
         except Exception as e:
-            logger.error(f"Error importing Java classes: {e}", exc_info=True)
+            logger.error(f"CRITICAL: Error importing Java classes (including REQUIRED QBF): {e}", exc_info=True)
             raise RuntimeError(f"Java class import failed: {e}") from e
-
 
     def initialize_pl_components(self):
         """Initializes components for Propositional Logic."""
@@ -278,45 +309,84 @@ class TweetyInitializer:
             raise
 
     def initialize_qbf_components(self):
-        """Initializes components for QBF Logic."""
+        """Initializes components for QBF Logic - DISCOVER AND USE AVAILABLE CLASSES."""
         if not TweetyInitializer._jvm_started:
             self._start_jvm()
-        try:
-            logger.debug("Initializing QBF components...")
-            
-            # Try to initialize QBF components
+        
+        logger.debug("Initializing QBF components (REQUIRED) - DISCOVERY MODE...")
+        
+        # Discover available QBF parsers
+        qbf_parser_candidates = [
+            "org.tweetyproject.logics.qbf.parser.QCirParser",
+            "org.tweetyproject.logics.qbf.parser.QdimacsParser", 
+            "org.tweetyproject.logics.qbf.parser.QbfParser"
+        ]
+        
+        qbf_parser_class = None
+        last_error = None
+        for parser_name in qbf_parser_candidates:
             try:
-                TweetyInitializer._qbf_parser = jpype.JClass("org.tweetyproject.logics.qbf.parser.QbfParser")()
-                
-                # Store QBF component classes for later use
-                qbf_components = {
-                    "QuantifiedBooleanFormula": jpype.JClass("org.tweetyproject.logics.qbf.syntax.QuantifiedBooleanFormula"),
-                    "Quantifier": jpype.JClass("org.tweetyproject.logics.qbf.syntax.Quantifier"),
-                    "Variable": jpype.JClass("org.tweetyproject.logics.commons.syntax.Variable"),
-                    "Proposition": jpype.JClass("org.tweetyproject.logics.propositional.syntax.Proposition"),
-                    "Conjunction": jpype.JClass("org.tweetyproject.logics.propositional.syntax.Conjunction"),
-                    "Disjunction": jpype.JClass("org.tweetyproject.logics.propositional.syntax.Disjunction"),
-                    "Negation": jpype.JClass("org.tweetyproject.logics.propositional.syntax.Negation"),
-                    "Implication": jpype.JClass("org.tweetyproject.logics.propositional.syntax.Implication")
-                }
-                
-                TweetyInitializer._qbf_components = qbf_components
-                logger.info("QBF components initialized successfully.")
-                return TweetyInitializer._qbf_parser, qbf_components
-                
-            except Exception as e_qbf_init:
-                logger.warning(f"Failed to initialize QBF components: {e_qbf_init}")
-                logger.info("QBF functionality will not be available.")
-                TweetyInitializer._qbf_parser = None
-                TweetyInitializer._qbf_components = None
-                return None, None
-                
+                qbf_parser_class = jpype.JClass(parser_name)
+                TweetyInitializer._qbf_parser = qbf_parser_class()
+                logger.info(f"✅ Successfully initialized QBF parser: {parser_name}")
+                break
+            except Exception as e:
+                logger.debug(f"Failed to initialize {parser_name}: {e}")
+                last_error = e
+                continue
+        
+        # CRITICAL: If no QBF parser found, FAIL the entire system
+        if qbf_parser_class is None:
+            error_msg = f"CRITICAL: No QBF parser could be initialized. Tried: {qbf_parser_candidates}. Last error: {last_error}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        
+        # Discover available QBF component classes
+        try:
+            qbf_components = {}
+            
+            # Try to find quantified formula classes
+            quantified_formula_candidates = [
+                ("ExistsQuantifiedFormula", "org.tweetyproject.logics.qbf.syntax.ExistsQuantifiedFormula"),
+                ("ForallQuantifiedFormula", "org.tweetyproject.logics.qbf.syntax.ForallQuantifiedFormula"),
+                ("QuantifiedBooleanFormula", "org.tweetyproject.logics.qbf.syntax.QuantifiedBooleanFormula"),
+                ("QbfFormula", "org.tweetyproject.logics.qbf.syntax.QbfFormula")
+            ]
+            
+            for name, class_path in quantified_formula_candidates:
+                try:
+                    qbf_components[name] = jpype.JClass(class_path)
+                    logger.info(f"✅ Added QBF component: {name} -> {class_path}")
+                except Exception as e:
+                    logger.debug(f"❌ QBF component {name} ({class_path}) not available: {e}")
+                    continue
+            
+            # Always add PL syntax classes for matrix construction
+            pl_components = [
+                ("Proposition", "org.tweetyproject.logics.pl.syntax.Proposition"),
+                ("Conjunction", "org.tweetyproject.logics.pl.syntax.Conjunction"),
+                ("Disjunction", "org.tweetyproject.logics.pl.syntax.Disjunction"),
+                ("Negation", "org.tweetyproject.logics.pl.syntax.Negation"),
+                ("Implication", "org.tweetyproject.logics.pl.syntax.Implication")
+            ]
+            
+            for name, class_path in pl_components:
+                qbf_components[name] = jpype.JClass(class_path)
+                logger.debug(f"✅ Added PL component for QBF: {name}")
+            
+            # Verify we have at least one quantified formula class
+            quantified_classes = [k for k in qbf_components.keys() if "Quantified" in k or "Qbf" in k]
+            if not quantified_classes:
+                raise RuntimeError("No quantified formula classes found - QBF functionality requires at least one")
+            
+            TweetyInitializer._qbf_components = qbf_components
+            logger.info(f"✅ QBF components initialized successfully! Available quantified classes: {quantified_classes}")
+            return TweetyInitializer._qbf_parser, qbf_components
+            
         except Exception as e:
-            logger.error(f"Error during QBF components initialization: {e}", exc_info=True)
-            # QBF is optional, so we don't raise an error but return None
-            TweetyInitializer._qbf_parser = None
-            TweetyInitializer._qbf_components = None
-            return None, None
+            error_msg = f"CRITICAL: Failed to initialize QBF components: {e}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
 
     @staticmethod
     def get_pl_parser():
@@ -340,17 +410,21 @@ class TweetyInitializer:
 
     @staticmethod
     def get_qbf_parser():
-        """Returns the QBF parser if available."""
+        """Returns the QBF parser - NOW GUARANTEED TO BE AVAILABLE."""
+        if TweetyInitializer._qbf_parser is None:
+            raise RuntimeError("QBF parser not initialized - this should never happen in required mode")
         return TweetyInitializer._qbf_parser
 
     @staticmethod
     def get_qbf_components():
-        """Returns the QBF component classes if available."""
+        """Returns the QBF component classes - NOW GUARANTEED TO BE AVAILABLE."""
+        if TweetyInitializer._qbf_components is None:
+            raise RuntimeError("QBF components not initialized - this should never happen in required mode")
         return TweetyInitializer._qbf_components
 
     @staticmethod
     def is_qbf_available():
-        """Checks if QBF components are available and initialized."""
+        """Checks if QBF components are available and initialized - NOW ALWAYS TRUE."""
         return (TweetyInitializer._qbf_parser is not None and 
                 TweetyInitializer._qbf_components is not None)
 

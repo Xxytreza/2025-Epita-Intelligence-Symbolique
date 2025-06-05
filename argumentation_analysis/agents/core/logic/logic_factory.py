@@ -31,7 +31,7 @@ class LogicAgentFactory:
         "propositional": PropositionalLogicAgent,
         "first_order": FirstOrderLogicAgent,
         "modal": ModalLogicAgent,
-        "qbf": QBFLogicAgent
+        "quantified_boolean": QBFLogicAgent
     }
     
     @classmethod
@@ -65,7 +65,7 @@ class LogicAgentFactory:
             "pl": "propositional",
             "fol": "first_order",
             "ml": "modal",
-            "quantified_boolean": "qbf"
+            "qbf": "quantified_boolean"
         }
         
         # Résoudre les aliases
@@ -86,7 +86,7 @@ class LogicAgentFactory:
             
             # Configurer le kernel de l'agent si un service LLM est fourni
             if llm_service:
-                agent.setup_agent_components(llm_service) # MODIFIED: Renamed to setup_agent_components
+                agent.setup_agent_components(llm_service)
             
             logger.info(f"Agent logique de type '{logic_type}' créé avec succès")
             return agent
@@ -135,7 +135,7 @@ class LogicAgentFactory:
             "pl": "propositional",
             "fol": "first_order", 
             "ml": "modal",
-            "quantified_boolean": "qbf"
+            "qbf": "quantified_boolean"
         }
         
         # Créer le mapping complet
@@ -173,7 +173,7 @@ class LogicAgentFactory:
             "pl": "propositional",
             "fol": "first_order",
             "ml": "modal", 
-            "quantified_boolean": "qbf"
+            "qbf": "quantified_boolean"
         }
         
         if normalized_logic_type in type_aliases:
@@ -205,7 +205,7 @@ class LogicAgentFactory:
                 "description": "Agent pour la logique modale avec opérateurs de nécessité et possibilité",
                 "syntax": "Opérateurs modaux: []p (nécessité), <>p (possibilité)"
             },
-            "qbf": {
+            "quantified_boolean": {
                 "name": "QBFLogicAgent",
                 "description": "Agent pour la logique des formules booléennes quantifiées",
                 "syntax": "Variables booléennes, quantificateurs: exists, forall sur variables booléennes"

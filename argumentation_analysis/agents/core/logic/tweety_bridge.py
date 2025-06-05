@@ -81,6 +81,7 @@ class TweetyBridge:
         self._initializer.initialize_pl_components()
         self._initializer.initialize_fol_components()
         self._initializer.initialize_modal_components()
+        self._initializer.initialize_qbf_components()
         # Note: QBF components initialization will be handled by QBFHandler internally
 
         # Initialiser les handlers spécifiques
